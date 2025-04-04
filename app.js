@@ -5,8 +5,13 @@ const authRoutes = require('./routes/authRoutes');
 
 const app = express();
 
+
+
 // Middleware
-app.use(cors());
+app.use(cors({
+    origin: 'http://localhost:5173', // Your frontend URL
+    credentials: true
+  }));
 app.use(express.json());
 app.use(morgan('dev'));
 app.use('/api/auth', authRoutes);
