@@ -2,7 +2,7 @@ const bcrypt = require('bcryptjs');
 const { generateToken } = require('../utils/jwt');
 const prisma = require('../prisma/client');
 
-// Register
+// Register new user
 const register = async (req, res) => {
   try {
     const {
@@ -111,7 +111,7 @@ const register = async (req, res) => {
   }
 };
 
-// Login
+// User login
 const login = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -153,7 +153,8 @@ const login = async (req, res) => {
         lastName: user.last_name,
         email: user.email,
         phone: user.phone,
-        gender: user.gender
+        gender: user.gender,
+        role: user.role
       }
     });
     
@@ -166,7 +167,7 @@ const login = async (req, res) => {
   }
 };
 
-// Logout remains the same
+// User logout
 const logout = (req, res) => {
   res.status(200).json({ 
     success: true,
@@ -174,4 +175,104 @@ const logout = (req, res) => {
   });
 };
 
-module.exports = { register, login, logout };
+// Get current user profile
+const getMe = async (req, res) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      select: {
+        id: true,
+        first_name: true,
+        last_name: true,
+        email: true,
+        phone: true,
+        role: true,
+        prayer_in_room: true,
+        no_alcohol: true,
+        zabihah_only: true
+      }
+    });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        ...user,
+        firstName: user.first_name,
+        lastName: user.last_name
+      }
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch user data'
+    });
+  }
+};
+
+// Update user password
+const updatePassword = async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    const user = await prisma.user.findUnique({ 
+      where: { id: req.user.id } 
+    });
+    
+    // Verify current password
+    const isValid = await bcrypt.compare(currentPassword, user.password);
+    if (!isValid) {
+      return res.status(401).json({ 
+        success: false,
+        error: 'Current password is incorrect'
+      });
+    }
+    
+    // Update password
+    await prisma.user.update({
+      where: { id: req.user.id },
+      data: { 
+        password: await bcrypt.hash(newPassword, 12),
+        last_password_change: new Date() 
+      }
+    });
+    
+    res.status(200).json({ 
+      success: true,
+      message: 'Password updated successfully'
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      success: false,
+      error: 'Password update failed'
+    });
+  }
+};
+
+// Verify user email
+const verifyEmail = async (req, res) => {
+  try {
+    await prisma.user.update({
+      where: { id: req.user.id },
+      data: { is_verified: true }
+    });
+    
+    res.status(200).json({ 
+      success: true,
+      message: 'Email verified successfully' 
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      success: false,
+      error: 'Email verification failed'
+    });
+  }
+};
+
+// Export all controller methods
+module.exports = {
+  register,
+  login,
+  logout,
+  getMe,
+  updatePassword,
+  verifyEmail
+};
