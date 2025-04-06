@@ -20,7 +20,7 @@ app.use('/api/users', require('./routes/userRoutes'));
 // Add these lines to your existing app.js
 app.use('/api', require('./routes/adminRoutes'));
 app.use('/api/workers', require('./routes/workerRoutes'));
-
+app.use('/api/password', require('./routes/passwordRoutes'));
 
 // Health check endpoint
 app.get('/health', (req, res) => {

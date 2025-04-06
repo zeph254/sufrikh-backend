@@ -180,3 +180,38 @@ module.exports = {
   }
 };
 
+// Add to emailTemplates object
+passwordReset: ({ name, resetUrl }) => (`
+  <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+    <h2 style="color: #2563eb;">Password Reset Request</h2>
+    <p>Hello ${name},</p>
+    <p>You requested a password reset. Click the button below to reset your password:</p>
+    
+    <a href="${resetUrl}" 
+       style="background: #2563eb; color: white; padding: 10px 20px;
+              text-decoration: none; border-radius: 4px; display: inline-block;
+              margin: 20px 0;">
+      Reset Password
+    </a>
+    
+    <p style="color: #6b7280; font-size: 0.9em;">
+      This link will expire in 30 minutes. If you didn't request this, 
+      please ignore this email or contact support.
+    </p>
+  </div>
+`);
+
+// Add new method
+exports.sendPasswordResetEmail = async ({ email, resetUrl, name }) => {
+  try {
+    await transporter.sendMail({
+      to: email,
+      from: process.env.EMAIL_FROM,
+      subject: 'Your Password Reset Request',
+      html: emailTemplates.passwordReset({ name, resetUrl })
+    });
+  } catch (err) {
+    console.error('Password reset email failed:', err);
+    throw err;
+  }
+};
