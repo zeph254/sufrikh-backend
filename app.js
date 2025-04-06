@@ -15,6 +15,11 @@ app.use(cors({
 app.use(express.json());
 app.use(morgan('dev'));
 app.use('/api/auth', authRoutes);
+// Add this to your existing routes
+app.use('/api/users', require('./routes/userRoutes'));
+// Add these lines to your existing app.js
+app.use('/api/admin', require('./routes/adminRoutes'));
+app.use('/api/workers', require('./routes/workerRoutes'));
 
 // Health check endpoint
 app.get('/health', (req, res) => {
