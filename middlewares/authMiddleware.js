@@ -63,3 +63,15 @@ exports.requireVerified = (req, res, next) => {
   }
   next();
 };
+
+// Add to authMiddleware.js
+exports.requireWorker = (req, res, next) => {
+    if (req.user?.role !== 'WORKER') {
+      return res.status(403).json({
+        success: false,
+        error: 'Worker access required',
+        code: 'WORKER_ACCESS_REQUIRED'
+      });
+    }
+    next();
+  };
