@@ -3,6 +3,7 @@ const router = express.Router();
 const adminController = require('../controllers/adminController');
 const { protect, requireRoles } = require('../middlewares/authMiddleware');
 
+
 // Add this verification
 console.log('Admin Controller Methods:', {
   createAdmin: typeof adminController.createAdmin,

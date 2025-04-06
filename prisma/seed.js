@@ -20,7 +20,8 @@ async function main() {
       is_verified: true,
       phone: "+1234567890",
       no_alcohol: true,
-      zabihah_only: true
+      zabihah_only: true,
+      is_super_admin: true
     }
   });
 
