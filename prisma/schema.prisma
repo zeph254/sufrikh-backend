@@ -41,6 +41,8 @@ model User {
   id_type        String?   @db.VarChar(20)
   id_number      String?   @db.VarChar(50)
 
+  profile_picture String?
+
   // Halal Preferences
   prayer_in_room Boolean   @default(false)
   no_alcohol     Boolean   @default(true)

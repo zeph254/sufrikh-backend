@@ -4,37 +4,87 @@ const prisma = require('../prisma/client');
 
 // Register - with enhanced debugging
 const register = async (req, res) => {
-  console.log('Register function called'); // Debugging
+  console.log('Register function called');
   try {
-    const { email, password } = req.body;
-    
+    const {
+      email,
+      password,
+      first_name,
+      last_name,
+      phone,
+      gender,
+      id_type,
+      id_number,
+      special_requests,
+      zabihah_only,
+      no_alcohol,
+      prayer_in_room
+    } = req.body;
+
     // Basic validation
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password required' });
+    if (!email || !password || !first_name || !last_name) {
+      return res.status(400).json({ error: 'First name, last name, email, and password are required' });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
+
     const user = await prisma.user.create({
       data: {
+        first_name,
+        last_name,
         email,
         password: hashedPassword,
-        role: 'CUSTOMER'
+        role: 'CUSTOMER',
+        phone,
+        gender,
+        id_type,
+        id_number,
+        special_requests,
+        // Handle booleans carefully: default to schema values if undefined
+        zabihah_only: zabihah_only ?? true,
+        no_alcohol: no_alcohol ?? true,
+        prayer_in_room: prayer_in_room ?? false
       }
     });
 
     const token = generateToken(user.id);
-    res.status(201).json({ token });
+    res.status(201).json({ token, user });
+
   } catch (err) {
     console.error('Registration error:', err);
     res.status(500).json({ error: 'Registration failed' });
   }
 };
 
+
+
 // Login
+// In your authController.js
+
 const login = async (req, res) => {
   try {
     const { email, password } = req.body;
-    const user = await prisma.user.findUnique({ where: { email } });
+    
+    const user = await prisma.user.findUnique({ 
+      where: { email },
+      select: {
+        id: true,
+        email: true,
+        password: true,
+        first_name: true,
+        last_name: true,
+        role: true,
+        profile_picture: true, // Ensure this is included
+        phone: true,
+        gender: true,
+        id_type: true,
+        id_number: true,
+        prayer_in_room: true,
+        no_alcohol: true,
+        zabihah_only: true,
+        special_requests: true
+      }
+    });
     
     if (!user) return res.status(401).json({ error: 'Invalid credentials' });
     
@@ -42,12 +92,23 @@ const login = async (req, res) => {
     if (!isValid) return res.status(401).json({ error: 'Invalid credentials' });
     
     const token = generateToken(user.id);
-    res.json({ token });
+    
+    res.json({ 
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        first_name: user.first_name,
+        last_name: user.last_name,
+        role: user.role,
+        profile_picture: user.profile_picture || null // Explicit null if no picture
+      }
+    });
   } catch (err) {
+    console.error('Login error:', err);
     res.status(500).json({ error: 'Login failed' });
   }
 };
-
 // Logout
 const logout = (req, res) => {
   res.json({ message: 'Logged out' });
