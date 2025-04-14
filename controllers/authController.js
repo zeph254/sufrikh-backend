@@ -70,11 +70,11 @@ const login = async (req, res) => {
       select: {
         id: true,
         email: true,
-        password: true,
+        password: true,  // Required for verification
         first_name: true,
         last_name: true,
         role: true,
-        profile_picture: true, // Ensure this is included
+        profile_picture: true,
         phone: true,
         gender: true,
         id_type: true,
@@ -93,6 +93,7 @@ const login = async (req, res) => {
     
     const token = generateToken(user.id);
     
+    // Return complete user data with defaults for missing fields
     res.json({ 
       token,
       user: {
@@ -101,7 +102,15 @@ const login = async (req, res) => {
         first_name: user.first_name,
         last_name: user.last_name,
         role: user.role,
-        profile_picture: user.profile_picture || null // Explicit null if no picture
+        profile_picture: user.profile_picture || null,
+        phone: user.phone || '',
+        gender: user.gender || 'male',
+        id_type: user.id_type || 'passport',
+        id_number: user.id_number || '',
+        prayer_in_room: user.prayer_in_room || false,
+        no_alcohol: user.no_alcohol ?? true,
+        zabihah_only: user.zabihah_only ?? true,
+        special_requests: user.special_requests || ''
       }
     });
   } catch (err) {

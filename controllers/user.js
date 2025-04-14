@@ -52,14 +52,14 @@ exports.getUser = async (req, res) => {
         email: true,
         phone: true,
         role: true,
+        profile_picture: true,
         gender: true,
         id_type: true,
         id_number: true,
         prayer_in_room: true,
         no_alcohol: true,
         zabihah_only: true,
-        special_requests: true,
-        created_at: true
+        special_requests: true
       }
     });
 
@@ -74,19 +74,19 @@ exports.getUser = async (req, res) => {
       success: true,
       data: {
         id: user.id,
-        firstName: user.first_name,
-        lastName: user.last_name,
+        first_name: user.first_name,
+        last_name: user.last_name,
         email: user.email,
-        phone: user.phone,
+        phone: user.phone || '',
         role: user.role,
-        gender: user.gender,
-        idType: user.id_type,
-        idNumber: user.id_number,
-        prayerInRoom: user.prayer_in_room,
-        noAlcohol: user.no_alcohol,
-        zabihahOnly: user.zabihah_only,
-        specialRequests: user.special_requests,
-        createdAt: user.created_at
+        profile_picture: user.profile_picture || null,
+        gender: user.gender || 'male',
+        id_type: user.id_type || 'passport',
+        id_number: user.id_number || '',
+        prayer_in_room: user.prayer_in_room || false,
+        no_alcohol: user.no_alcohol ?? true,
+        zabihah_only: user.zabihah_only ?? true,
+        special_requests: user.special_requests || ''
       }
     });
   } catch (err) {
