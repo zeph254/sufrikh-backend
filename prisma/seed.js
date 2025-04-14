@@ -8,40 +8,37 @@ async function hashPassword(password) {
   return await bcrypt.hash(password, saltRounds);
 }
 
+// seed.js
 async function main() {
-  // Create initial admin
+  // Create SUPER ADMIN
   await prisma.user.create({
     data: {
-      first_name: "Admin",
-      last_name: "User",
-      email: "admin@sufrikh.com",
-      password: await hashPassword("secure123"), // Change this in production!
-      role: Role.ADMIN,
-      is_verified: true,
-      phone: "+1234567890",
-      no_alcohol: true,
-      zabihah_only: true,
-      is_super_admin: true
-    }
-  });
-
-  // Create sample worker
-  await prisma.user.create({
-    data: {
-      first_name: "Staff",
-      last_name: "Member",
-      email: "worker@sufrikh.com",
-      password: await hashPassword("workerpass123"),
-      role: Role.WORKER,
-      is_verified: true,
-      position: "Receptionist",
-      department: "Front Desk",
+      first_name: "Super",
+      last_name: "Admin",
+      email: "superadmin@sufrikh.com",
+      password: await hashPassword("SuperAdmin123!"),
+      role: 'ADMIN',
       is_super_admin: true,
-      last_password_change: new Date(),
+      is_verified: true,
+      phone: "+12345678901"
     }
   });
 
-  console.log('✅ Seed completed: Admin and Worker users created');
+  // Create NORMAL ADMIN
+  await prisma.user.create({
+    data: {
+      first_name: "Normal",
+      last_name: "Admin",
+      email: "admin@sufrikh.com",
+      password: await hashPassword("Admin123!"),
+      role: 'ADMIN',
+      is_super_admin: false,
+      is_verified: true,
+      phone: "+12345678902"
+    }
+  });
+
+  console.log('✅ Seed completed: Super Admin and Normal Admin created');
 }
 
 main()
