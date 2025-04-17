@@ -1,3 +1,4 @@
+// app.js
 const express = require('express');
 const cors = require('cors');
 const morgan = require('morgan');
@@ -5,22 +6,23 @@ const authRoutes = require('./routes/authRoutes');
 
 const app = express();
 
-
-
 // Middleware
 app.use(cors({
-    origin: 'http://localhost:5173', // Your frontend URL
-    credentials: true
-  }));
+  origin: 'http://localhost:5173',
+  credentials: true
+}));
 app.use(express.json());
 app.use(morgan('dev'));
+
+// Routes
 app.use('/api/auth', authRoutes);
-// Add this to your existing routes
+app.use('/api/customers', require('./routes/customerRoutes'));
 app.use('/api/users', require('./routes/userRoutes'));
-// Add these lines to your existing app.js
-app.use('/api', require('./routes/adminRoutes'));
-app.use('/api/workers', require('./routes/workerRoutes'));
+app.use('/api/admin', require('./routes/adminRoutes')); // Changed from '/api'
 app.use('/api/password', require('./routes/passwordRoutes'));
+
+// Remove this duplicate route
+// app.use('/api/workers', require('./routes/workerRoutes')); // Remove this line
 
 // Health check endpoint
 app.get('/health', (req, res) => {
