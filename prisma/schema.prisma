@@ -1,5 +1,6 @@
 generator client {
   provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client"
 }
 
 datasource db {
@@ -16,64 +17,86 @@ enum Role {
 
 model User {
   // Core Fields
-  id             Int       @id @default(autoincrement())
-  first_name     String    @db.VarChar(100)
-  last_name      String    @db.VarChar(100)
-  email          String    @unique @db.VarChar(100)
-  phone          String?   @db.VarChar(20)
-  password       String    @db.VarChar(100)
-  role           Role      @default(CUSTOMER)
-  is_verified    Boolean   @default(false)
-  
+  id          Int     @id @default(autoincrement())
+  first_name  String  @db.VarChar(100)
+  last_name   String  @db.VarChar(100)
+  email       String  @unique @db.VarChar(100)
+  phone       String? @db.VarChar(20)
+  password    String  @db.VarChar(100)
+  role        Role    @default(CUSTOMER)
+  is_verified Boolean @default(false)
+  is_active   Boolean @default(true)
+
   // Admin-Specific
-  is_super_admin Boolean   @default(false)
+  is_super_admin       Boolean   @default(false)
   last_password_change DateTime?
-  invited_by_id  Int?
-  invited_by     User?     @relation("InvitedBy", fields: [invited_by_id], references: [id])
-  invited_users  User[]    @relation("InvitedBy")
+  invited_by_id        Int?
+  invited_by           User?     @relation("InvitedBy", fields: [invited_by_id], references: [id], onDelete: SetNull)
+  invited_users        User[]    @relation("InvitedBy")
 
   // Audit Log Relations
   admin_actions  AdminAuditLog[] @relation("AdminActions")
   target_actions AdminAuditLog[] @relation("TargetActions")
 
+  // Worker Profile Relation
+  worker_profile WorkerProfile? @relation("WorkerProfile")
+
   // Identification
-  gender         String?   @db.VarChar(10)
-  id_type        String?   @db.VarChar(20)
-  id_number      String?   @db.VarChar(50)
+  gender    String? @db.VarChar(10)
+  id_type   String? @db.VarChar(20)
+  id_number String? @db.VarChar(50)
 
   profile_picture String?
 
   // Halal Preferences
-  prayer_in_room Boolean   @default(false)
-  no_alcohol     Boolean   @default(true)
-  zabihah_only   Boolean   @default(true)
+  prayer_in_room   Boolean @default(false)
+  no_alcohol       Boolean @default(true)
+  zabihah_only     Boolean @default(true)
   special_requests String?
 
   // Worker-Specific
-  position       String?   @db.VarChar(50)
-  department     String?   @db.VarChar(50)
+  position   String? @db.VarChar(50)
+  department String? @db.VarChar(50)
 
   // Timestamps
-  created_at     DateTime  @default(now())
-  updated_at     DateTime  @updatedAt
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
 
-  resetPasswordToken   String?
-  resetPasswordExpire  DateTime?
+  resetPasswordToken  String?
+  resetPasswordExpire DateTime?
 
   // Indexes
   @@index([email])
   @@index([role])
   @@index([id_number])
   @@index([invited_by_id])
+  @@index([is_active])
+  @@index([created_at])
+  @@index([role, is_active])
+}
+
+model WorkerProfile {
+  id         Int      @id @default(autoincrement())
+  user       User     @relation("WorkerProfile", fields: [userId], references: [id], onDelete: Cascade)
+  userId     Int      @unique
+  position   String
+  department String
+  hire_date  DateTime @default(now())
+  reports_to Int? // ID of the manager/supervisor
+  salary     Float?
+
+  @@index([userId])
+  @@index([department])
 }
 
 model AdminAuditLog {
-  id        Int      @id @default(autoincrement())
-  action    String
-  admin     User     @relation("AdminActions", fields: [adminId], references: [id])
-  adminId   Int
-  target    User     @relation("TargetActions", fields: [targetId], references: [id])
-  targetId  Int
-  metadata  Json?
-  created_at DateTime @default(now())
+  id          Int      @id @default(autoincrement())
+  action      String
+  admin       User     @relation("AdminActions", fields: [adminId], references: [id])
+  adminId     Int
+  target      User     @relation("TargetActions", fields: [targetId], references: [id], onDelete: Cascade)
+  targetId    Int
+  metadata    Json?
+  permissions Json?
+  created_at  DateTime @default(now())
 }
