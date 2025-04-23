@@ -15,8 +15,12 @@ console.log('Admin Controller Methods:', {
 });
 
 // Admin routes
+// Admin routes
 router.post('/admins', protect, requireRoles('SUPER_ADMIN'), adminController.createAdmin);
 router.get('/admins', protect, requireRoles('ADMIN', 'SUPER_ADMIN'), adminController.getAdmins);
+router.put('/admins/:id', protect, requireRoles('SUPER_ADMIN'), adminController.updateAdmin);
+router.delete('/admins/:id', protect, requireRoles('SUPER_ADMIN'), adminController.deleteAdmin);
+router.put('/admins/:id/toggle-status', protect, requireRoles('SUPER_ADMIN'), adminController.toggleAdminStatus);
 
 // Worker routes
 router.post('/workers', protect, requireRoles('ADMIN', 'SUPER_ADMIN'), adminController.createWorker);

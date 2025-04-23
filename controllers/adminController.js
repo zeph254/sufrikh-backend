@@ -7,23 +7,23 @@ const { sendInviteEmail } = require('../services/emailService');
 // Admin Management
 exports.createAdmin = async (req, res) => {
   try {
-    const { email, firstName, lastName, isSuperAdmin = false } = req.body;
+    const { email, firstName, lastName, phone = null, isSuperAdmin = false, password } = req.body;
     
-    // Only super admins can create other admins
-    if (!req.user.is_super_admin) {
-      return res.status(403).json({ 
+    // Validate required fields
+    if (!email || !firstName || !lastName || !password) {
+      return res.status(400).json({ 
         success: false,
-        error: 'Super admin privileges required' 
+        error: 'Email, first name, last name, and password are required' 
       });
     }
 
-    const tempPassword = generateTempPassword(12);
     const newAdmin = await prisma.user.create({
       data: {
         first_name: firstName,
         last_name: lastName,
         email,
-        password: await bcrypt.hash(tempPassword, 12),
+        phone,
+        password: await bcrypt.hash(password, 12), // Use the provided password
         role: 'ADMIN',
         is_super_admin: isSuperAdmin,
         is_verified: true,
@@ -61,17 +61,24 @@ exports.createAdmin = async (req, res) => {
     });
 
   } catch (err) {
+    console.error('Admin creation error:', err);
+    
+    let errorMessage = 'Failed to create admin';
     if (err instanceof Prisma.PrismaClientKnownRequestError) {
       if (err.code === 'P2002') {
+        errorMessage = 'Email already in use';
         return res.status(400).json({ 
           success: false,
-          error: 'Email already in use' 
+          error: errorMessage,
+          field: 'email'
         });
       }
     }
+    
     res.status(500).json({ 
       success: false,
-      error: 'Failed to create admin' 
+      error: errorMessage,
+      details: process.env.NODE_ENV === 'development' ? err.message : undefined
     });
   }
 };
@@ -410,6 +417,236 @@ exports.updateWorker = async (req, res) => {
       });
     }
   };
+  // Admin Management - Update Admin
+exports.updateAdmin = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { firstName, lastName, email, phone, isSuperAdmin } = req.body;
+
+    // Only super admins can update admin details
+    if (!req.user.is_super_admin) {
+      return res.status(403).json({ 
+        success: false,
+        error: 'Super admin privileges required' 
+      });
+    }
+
+    // Prevent updating your own super admin status
+    if (parseInt(id) === req.user.id) {
+      return res.status(400).json({
+        success: false,
+        error: 'You cannot modify your own admin privileges'
+      });
+    }
+
+    const updatedAdmin = await prisma.user.update({
+      where: { id: parseInt(id), role: 'ADMIN' },
+      data: { 
+        first_name: firstName,
+        last_name: lastName,
+        email,
+        phone,
+        is_super_admin: isSuperAdmin 
+      },
+      select: {
+        id: true,
+        first_name: true,
+        last_name: true,
+        email: true,
+        phone: true,
+        is_super_admin: true,
+        is_active: true
+      }
+    });
+
+    // Log this admin action
+    await prisma.adminAuditLog.create({
+      data: {
+        action: 'UPDATE_ADMIN',
+        adminId: req.user.id,
+        targetId: updatedAdmin.id,
+        metadata: { isSuperAdmin }
+      }
+    });
+
+    res.json({ 
+      success: true,
+      message: 'Admin updated successfully',
+      admin: updatedAdmin
+    });
+
+  } catch (err) {
+    console.error('Update admin error:', err);
+    if (err instanceof Prisma.PrismaClientKnownRequestError) {
+      if (err.code === 'P2025') {
+        return res.status(404).json({ 
+          success: false,
+          error: 'Admin not found' 
+        });
+      }
+      if (err.code === 'P2002') {
+        return res.status(400).json({ 
+          success: false,
+          error: 'Email already in use' 
+        });
+      }
+    }
+    res.status(500).json({ 
+      success: false,
+      error: 'Failed to update admin' 
+    });
+  }
+};
+
+// Admin Management - Delete Admin
+exports.deleteAdmin = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const adminId = parseInt(id);
+
+    // Only super admins can delete admins
+    if (!req.user.is_super_admin) {
+      return res.status(403).json({ 
+        success: false,
+        error: 'Super admin privileges required' 
+      });
+    }
+
+    // Prevent deleting yourself
+    if (adminId === req.user.id) {
+      return res.status(400).json({
+        success: false,
+        error: 'You cannot delete your own account'
+      });
+    }
+
+    // 1. First verify admin exists and get details for audit log
+    const admin = await prisma.user.findUnique({
+      where: { id: adminId, role: 'ADMIN' },
+      select: { id: true, email: true, first_name: true, last_name: true }
+    });
+
+    if (!admin) {
+      return res.status(404).json({ 
+        success: false, 
+        error: 'Admin not found' 
+      });
+    }
+
+    // 2. Create audit log BEFORE deletion
+    await prisma.adminAuditLog.create({
+      data: {
+        action: 'DELETE_ADMIN',
+        adminId: req.user.id,
+        targetId: adminId,
+        metadata: {
+          deletedAdmin: `${admin.first_name} ${admin.last_name}`,
+          email: admin.email
+        }
+      }
+    });
+
+    // 3. Now delete the admin
+    await prisma.user.delete({
+      where: { id: adminId }
+    });
+
+    return res.json({ 
+      success: true,
+      message: 'Admin deleted successfully'
+    });
+
+  } catch (err) {
+    console.error('Delete admin error:', err);
+    
+    let statusCode = 500;
+    let errorMessage = 'Failed to delete admin';
+    
+    if (err.code === 'P2025') {
+      statusCode = 404;
+      errorMessage = 'Admin not found';
+    } else if (err.code === 'P2003') {
+      statusCode = 400;
+      errorMessage = 'Cannot delete admin with existing relations';
+    }
+
+    return res.status(statusCode).json({ 
+      success: false,
+      error: errorMessage,
+      details: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
+  }
+};
+
+// Admin Management - Toggle Admin Status
+exports.toggleAdminStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Only super admins can toggle admin status
+    if (!req.user.is_super_admin) {
+      return res.status(403).json({ 
+        success: false,
+        error: 'Super admin privileges required' 
+      });
+    }
+
+    // Prevent toggling your own status
+    if (parseInt(id) === req.user.id) {
+      return res.status(400).json({
+        success: false,
+        error: 'You cannot modify your own status'
+      });
+    }
+
+    const admin = await prisma.user.findUnique({
+      where: { id: parseInt(id), role: 'ADMIN' }
+    });
+
+    if (!admin) {
+      return res.status(404).json({ 
+        success: false, 
+        error: 'Admin not found' 
+      });
+    }
+
+    const updatedAdmin = await prisma.user.update({
+      where: { id: parseInt(id) },
+      data: { is_active: !admin.is_active },
+      select: {
+        id: true,
+        first_name: true,
+        last_name: true,
+        email: true,
+        is_active: true,
+        is_super_admin: true
+      }
+    });
+
+    // Log this admin action
+    await prisma.adminAuditLog.create({
+      data: {
+        action: 'TOGGLE_ADMIN_STATUS',
+        adminId: req.user.id,
+        targetId: updatedAdmin.id,
+        metadata: { newStatus: updatedAdmin.is_active }
+      }
+    });
+
+    res.json({ 
+      success: true,
+      message: 'Admin status updated',
+      admin: updatedAdmin
+    });
+
+  } catch (err) {
+    console.error('Toggle admin status error:', err);
+    res.status(500).json({ 
+      success: false,
+      error: 'Failed to toggle admin status' 
+    });
+  }
+};
 // At the bottom of adminController.js ensure you have:
 // module.exports = {
 //     createAdmin,
