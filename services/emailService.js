@@ -20,7 +20,7 @@ const transporter = nodemailer.createTransport({
 
 // Cache for email templates
 const emailTemplates = {
-  invite: ({ role, tempPassword, inviterName, loginUrl }) => (`
+  invite: ({ role, inviterName, loginUrl }) => (`
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
       <div style="background: #4299e1; padding: 20px; color: white;">
         <h1 style="margin: 0;">Sufrikh Account Invitation</h1>
@@ -29,22 +29,16 @@ const emailTemplates = {
         <p>Dear User,</p>
         <p><strong>${inviterName}</strong> has invited you to join Sufrikh as a <strong>${role}</strong>.</p>
         
-        <div style="background: #f8fafc; padding: 15px; border-radius: 6px; margin: 20px 0;">
-          <p style="margin: 0 0 10px 0;"><strong>Temporary Password:</strong></p>
-          <div style="background: white; padding: 10px; border-radius: 4px; font-family: monospace; font-size: 16px;">
-            ${tempPassword}
-          </div>
-        </div>
+        <p>Your account has been successfully created. You can now log in using the password you set during registration.</p>
         
         <a href="${loginUrl}" 
            style="background: #4299e1; color: white; padding: 12px 24px; 
                   text-decoration: none; border-radius: 6px; display: inline-block; font-weight: bold;">
-          Complete Your Registration
+          Login to Your Account
         </a>
         
         <p style="margin-top: 30px; font-size: 14px; color: #718096;">
-          <strong>Note:</strong> This temporary password will expire in 24 hours.
-          If you didn't request this, please contact our support team immediately.
+          If you didn't request this account, please contact our support team immediately.
         </p>
       </div>
       <div style="background: #f8fafc; padding: 15px 20px; text-align: center; font-size: 12px; color: #718096; border-top: 1px solid #e2e8f0;">
@@ -71,147 +65,149 @@ const emailTemplates = {
         please ignore this email or contact support if you have questions.
       </p>
     </div>
+  `),
+  
+  passwordReset: ({ name, resetUrl }) => (`
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
+      <div style="background: #2563eb; padding: 20px; color: white;">
+        <h1 style="margin: 0;">Sufrikh Password Reset</h1>
+      </div>
+      <div style="padding: 20px;">
+        <p>Hello ${name},</p>
+        <p>You requested a password reset. Click the button below to reset your password:</p>
+        
+        <a href="${resetUrl}" 
+           style="background: #2563eb; color: white; padding: 12px 24px;
+                  text-decoration: none; border-radius: 6px; display: inline-block;
+                  margin: 20px 0;">
+          Reset Password
+        </a>
+        
+        <p style="color: #6b7280; font-size: 0.9em;">
+          This link will expire in 30 minutes. If you didn't request this, 
+          please ignore this email or contact support.
+        </p>
+      </div>
+      <div style="background: #f8fafc; padding: 15px 20px; text-align: center; font-size: 12px; color: #718096; border-top: 1px solid #e2e8f0;">
+        © ${new Date().getFullYear()} Sufrikh. All rights reserved.
+      </div>
+    </div>
   `)
 };
 
 // Email service methods
-module.exports = {
-  /**
-   * Send account invitation email
-   * @param {Object} params
-   * @param {string} params.email - Recipient email
-   * @param {string} params.tempPassword - Temporary password
-   * @param {'admin'|'worker'} params.type - Account type
-   * @param {string} params.inviterName - Name of the inviter
-   */
-  async sendInviteEmail({ email, tempPassword, type, inviterName }) {
-    if (!email || !tempPassword || !type || !inviterName) {
-      throw new Error('Missing required email parameters');
-    }
+const sendInviteEmail = async ({ email, type, inviterName, loginUrl }) => {
+  if (!email || !type || !inviterName || !loginUrl) {
+    throw new Error('Missing required email parameters');
+  }
 
-    const roleTitles = {
-      admin: 'Administrator',
-      worker: 'Staff Member'
+  const roleTitles = {
+    admin: 'Administrator',
+    worker: 'Staff Member'
+  };
+
+  try {
+    const mailOptions = {
+      from: process.env.EMAIL_FROM || `"Sufrikh Team" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: `Your Sufrikh ${roleTitles[type]} Account Invitation`,
+      html: emailTemplates.invite({
+        role: roleTitles[type],
+        inviterName,
+        loginUrl
+      })
     };
 
-    try {
-      const mailOptions = {
-        from: process.env.EMAIL_FROM || `"Sufrikh Team" <${process.env.EMAIL_USER}>`,
-        to: email,
-        subject: `Your Sufrikh ${roleTitles[type]} Account Invitation`,
-        html: emailTemplates.invite({
-          role: roleTitles[type],
-          tempPassword,
-          inviterName,
-          loginUrl: `${process.env.FRONTEND_URL}/login`
-        })
-      };
-
-      if (process.env.NODE_ENV === 'development') {
-        console.log('Dev Mode: Would send email with options:', mailOptions);
-        return { previewUrl: 'https://mailtrap.io/inboxes' }; // Return mock response
-      }
-
-      const info = await transporter.sendMail(mailOptions);
-      console.log('Invite email sent:', info.messageId);
-      return info;
-    } catch (err) {
-      console.error('Email delivery failed:', {
-        error: err.message,
-        stack: err.stack,
-        recipient: email,
-        time: new Date().toISOString()
-      });
-      throw new Error(`Failed to send invitation email: ${err.message}`);
-    }
-  },
-
-  /**
-   * Send email verification link
-   * @param {string} email - Recipient email
-   * @param {string} userId - User ID for token generation
-   */
-  async sendVerificationEmail(email, userId) {
-    if (!email || !userId) {
-      throw new Error('Missing required parameters for verification email');
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Dev Mode: Would send email with options:', mailOptions);
+      return { previewUrl: 'https://mailtrap.io/inboxes' };
     }
 
-    try {
-      const token = generateToken(userId, '1h');
-      const verificationUrl = `${process.env.FRONTEND_URL}/verify-email?token=${token}`;
-
-      const mailOptions = {
-        from: process.env.EMAIL_FROM || `"Sufrikh Team" <${process.env.EMAIL_USER}>`,
-        to: email,
-        subject: 'Verify Your Sufrikh Account',
-        html: emailTemplates.verification({ verificationUrl })
-      };
-
-      if (process.env.NODE_ENV === 'development') {
-        console.log('Dev Mode: Verification email preview:', verificationUrl);
-        return { previewUrl: verificationUrl };
-      }
-
-      const info = await transporter.sendMail(mailOptions);
-      console.log('Verification email sent:', info.messageId);
-      return info;
-    } catch (err) {
-      console.error('Verification email failed:', {
-        error: err.message,
-        recipient: email,
-        time: new Date().toISOString()
-      });
-      throw new Error(`Failed to send verification email: ${err.message}`);
-    }
-  },
-
-  /** 
-   * Verify transporter connection
-   */
-  async verifyConnection() {
-    try {
-      await transporter.verify();
-      console.log('SMTP connection verified');
-      return true;
-    } catch (err) {
-      console.error('SMTP connection failed:', err);
-      return false;
-    }
+    const info = await transporter.sendMail(mailOptions);
+    console.log('Invite email sent:', info.messageId);
+    return info;
+  } catch (err) {
+    console.error('Email delivery failed:', {
+      error: err.message,
+      stack: err.stack,
+      recipient: email,
+      time: new Date().toISOString()
+    });
+    throw new Error(`Failed to send invitation email: ${err.message}`);
   }
 };
 
-// Add to emailTemplates object
-passwordReset: ({ name, resetUrl }) => (`
-  <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-    <h2 style="color: #2563eb;">Password Reset Request</h2>
-    <p>Hello ${name},</p>
-    <p>You requested a password reset. Click the button below to reset your password:</p>
-    
-    <a href="${resetUrl}" 
-       style="background: #2563eb; color: white; padding: 10px 20px;
-              text-decoration: none; border-radius: 4px; display: inline-block;
-              margin: 20px 0;">
-      Reset Password
-    </a>
-    
-    <p style="color: #6b7280; font-size: 0.9em;">
-      This link will expire in 30 minutes. If you didn't request this, 
-      please ignore this email or contact support.
-    </p>
-  </div>
-`);
+const sendVerificationEmail = async (email, userId) => {
+  if (!email || !userId) {
+    throw new Error('Missing required parameters for verification email');
+  }
 
-// Add new method
-exports.sendPasswordResetEmail = async ({ email, resetUrl, name }) => {
   try {
-    await transporter.sendMail({
+    const token = generateToken(userId, '1h');
+    const verificationUrl = `${process.env.FRONTEND_URL}/verify-email?token=${token}`;
+
+    const mailOptions = {
+      from: process.env.EMAIL_FROM || `"Sufrikh Team" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: 'Verify Your Sufrikh Account',
+      html: emailTemplates.verification({ verificationUrl })
+    };
+
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Dev Mode: Verification email preview:', verificationUrl);
+      return { previewUrl: verificationUrl };
+    }
+
+    const info = await transporter.sendMail(mailOptions);
+    console.log('Verification email sent:', info.messageId);
+    return info;
+  } catch (err) {
+    console.error('Verification email failed:', {
+      error: err.message,
+      recipient: email,
+      time: new Date().toISOString()
+    });
+    throw new Error(`Failed to send verification email: ${err.message}`);
+  }
+};
+
+const verifyConnection = async () => {
+  try {
+    await transporter.verify();
+    console.log('SMTP connection verified');
+    return true;
+  } catch (err) {
+    console.error('SMTP connection failed:', err);
+    return false;
+  }
+};
+
+const sendPasswordResetEmail = async ({ email, resetUrl, name }) => {
+  try {
+    const mailOptions = {
       to: email,
       from: process.env.EMAIL_FROM,
       subject: 'Your Password Reset Request',
       html: emailTemplates.passwordReset({ name, resetUrl })
-    });
+    };
+
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Dev Mode: Would send password reset email with options:', mailOptions);
+      return { previewUrl: resetUrl };
+    }
+
+    const info = await transporter.sendMail(mailOptions);
+    console.log('Password reset email sent:', info.messageId);
+    return info;
   } catch (err) {
     console.error('Password reset email failed:', err);
     throw err;
   }
+};
+
+module.exports = {
+  sendInviteEmail,
+  sendVerificationEmail,
+  verifyConnection,
+  sendPasswordResetEmail
 };

@@ -62,8 +62,8 @@ model User {
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
-  resetPasswordToken  String?
-  resetPasswordExpire DateTime?
+  resetPasswordToken      String?   @unique
+  resetPasswordExpire     DateTime?
 
   // Indexes
   @@index([email])

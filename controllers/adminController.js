@@ -17,13 +17,15 @@ exports.createAdmin = async (req, res) => {
       });
     }
 
+    const hashedPassword = await bcrypt.hash(password, 12);
+
     const newAdmin = await prisma.user.create({
       data: {
         first_name: firstName,
         last_name: lastName,
         email,
         phone,
-        password: await bcrypt.hash(password, 12), // Use the provided password
+        password: hashedPassword,
         role: 'ADMIN',
         is_super_admin: isSuperAdmin,
         is_verified: true,
@@ -47,11 +49,12 @@ exports.createAdmin = async (req, res) => {
       }
     });
 
+    // Send welcome email (without temp password)
     await sendInviteEmail({
       email,
-      tempPassword,
       type: 'admin',
-      inviterName: `${req.user.first_name} ${req.user.last_name}`
+      inviterName: `${req.user.first_name} ${req.user.last_name}`,
+      loginUrl: `${process.env.FRONTEND_URL}/login`
     });
 
     res.status(201).json({
@@ -59,23 +62,20 @@ exports.createAdmin = async (req, res) => {
       message: 'Admin created successfully',
       admin: newAdmin
     });
-
   } catch (err) {
     console.error('Admin creation error:', err);
     
     let errorMessage = 'Failed to create admin';
+    let statusCode = 500;
+    
     if (err instanceof Prisma.PrismaClientKnownRequestError) {
       if (err.code === 'P2002') {
+        statusCode = 400;
         errorMessage = 'Email already in use';
-        return res.status(400).json({ 
-          success: false,
-          error: errorMessage,
-          field: 'email'
-        });
       }
     }
     
-    res.status(500).json({ 
+    res.status(statusCode).json({ 
       success: false,
       error: errorMessage,
       details: process.env.NODE_ENV === 'development' ? err.message : undefined
