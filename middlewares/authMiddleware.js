@@ -29,6 +29,29 @@ exports.protect = async (req, res, next) => {
   }
 };
 
+// middlewares/authMiddleware.js
+exports.optionalAuth = async (req, res, next) => {
+  try {
+    const token = req.headers.authorization?.split(' ')[1] || req.cookies.jwt;
+    if (token) {
+      const decoded = verifyToken(token);
+      req.user = await prisma.user.findUnique({
+        where: { id: decoded.id },
+        select: {
+          id: true,
+          email: true,
+          role: true,
+          is_verified: true
+        }
+      });
+    }
+    next();
+  } catch (err) {
+    // Allow to proceed even if token is invalid
+    next();
+  }
+};
+
 // Role checking (flexible version)
 exports.requireRoles = (...roles) => (req, res, next) => {
   if (!req.user || !roles.includes(req.user.role)) {

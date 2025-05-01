@@ -40,19 +40,48 @@ const register = async (req, res) => {
         id_type,
         id_number,
         special_requests,
-        // Handle booleans carefully: default to schema values if undefined
         zabihah_only: zabihah_only ?? true,
         no_alcohol: no_alcohol ?? true,
-        prayer_in_room: prayer_in_room ?? false
+        prayer_in_room: prayer_in_room ?? false,
+        is_verified: false // Default to false for OTP verification
       }
     });
 
-    const token = generateToken(user.id);
-    res.status(201).json({ token, user });
+    // Generate token with shorter expiration for OTP flow
+    const token = generateToken(user.id, '1h');
+    
+    // Return user data but don't automatically log them in
+    res.status(201).json({ 
+      success: true,
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        first_name: user.first_name,
+        last_name: user.last_name,
+        role: user.role,
+        is_verified: false, // Explicitly set to false
+        phone: user.phone || '',
+        gender: user.gender || 'male'
+      },
+      requiresVerification: true // Flag to indicate OTP is needed
+    });
 
   } catch (err) {
     console.error('Registration error:', err);
-    res.status(500).json({ error: 'Registration failed' });
+    
+    // Handle duplicate email error specifically
+    if (err.code === 'P2002') {
+      return res.status(400).json({ 
+        error: 'Email already in use',
+        details: 'This email address is already registered'
+      });
+    }
+    
+    res.status(500).json({ 
+      error: 'Registration failed',
+      details: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
   }
 };
 
@@ -70,7 +99,7 @@ const login = async (req, res) => {
       select: {
         id: true,
         email: true,
-        password: true,  // Required for verification
+        password: true,
         first_name: true,
         last_name: true,
         role: true,
@@ -82,7 +111,8 @@ const login = async (req, res) => {
         prayer_in_room: true,
         no_alcohol: true,
         zabihah_only: true,
-        special_requests: true
+        special_requests: true,
+        is_verified: true // Make sure to include this
       }
     });
     
@@ -93,8 +123,9 @@ const login = async (req, res) => {
     
     const token = generateToken(user.id);
     
-    // Return complete user data with defaults for missing fields
+    // Always require verification if user isn't verified
     res.json({ 
+      success: true,
       token,
       user: {
         id: user.id,
@@ -110,14 +141,21 @@ const login = async (req, res) => {
         prayer_in_room: user.prayer_in_room || false,
         no_alcohol: user.no_alcohol ?? true,
         zabihah_only: user.zabihah_only ?? true,
-        special_requests: user.special_requests || ''
-      }
+        special_requests: user.special_requests || '',
+        is_verified: user.is_verified || false // Ensure this is included
+      },
+      requiresVerification: !user.is_verified,
+      redirectTo: !user.is_verified ? '/verify-otp' : null
     });
   } catch (err) {
     console.error('Login error:', err);
-    res.status(500).json({ error: 'Login failed' });
+    res.status(500).json({ 
+      error: 'Login failed',
+      details: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
   }
 };
+
 // Logout
 const logout = (req, res) => {
   res.json({ message: 'Logged out' });
@@ -133,6 +171,101 @@ const getMe = async (req, res) => {
     res.json({ user });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch user' });
+  }
+};
+
+const verifyOTP = async (req, res) => {
+  try {
+    const { userId, otp } = req.body;
+
+    if (!userId || !otp) {
+      return res.status(400).json({ error: 'User ID and OTP are required' });
+    }
+
+    // Verify OTP using your OTP service
+    const isValid = await otpService.verifyOTP(userId, otp, 'email');
+    
+    if (!isValid) {
+      return res.status(400).json({ error: 'Invalid or expired OTP' });
+    }
+
+    // Mark user as verified
+    const user = await prisma.user.update({
+      where: { id: userId },
+      data: { is_verified: true },
+      select: {
+        id: true,
+        email: true,
+        first_name: true,
+        last_name: true,
+        role: true,
+        is_verified: true
+      }
+    });
+
+    // Generate new token with normal expiration
+    const token = generateToken(user.id);
+
+    res.json({
+      success: true,
+      token,
+      user,
+      message: 'Account verified successfully'
+    });
+
+  } catch (err) {
+    console.error('OTP verification error:', err);
+    res.status(500).json({ 
+      error: 'OTP verification failed',
+      details: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
+  }
+};
+
+const requestOTP = async (req, res) => {
+  try {
+    const { userId, type = 'email' } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({ error: 'User ID is required' });
+    }
+
+    // Check if user exists
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true, phone: true, carrier: true }
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Send OTP based on type
+    let otp;
+    if (type === 'sms') {
+      if (!user.phone || !user.carrier) {
+        return res.status(400).json({ 
+          error: 'Phone number and carrier not registered' 
+        });
+      }
+      otp = await otpService.sendSmsOTP(user.phone, userId, user.carrier);
+    } else {
+      otp = await otpService.sendEmailOTP(user.email, userId);
+    }
+
+    res.json({ 
+      success: true,
+      message: `OTP sent via ${type}`,
+      // In production, don't send the OTP back
+      otp: process.env.NODE_ENV === 'development' ? otp : undefined 
+    });
+
+  } catch (err) {
+    console.error('OTP request error:', err);
+    res.status(500).json({ 
+      error: 'Failed to send OTP',
+      details: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
   }
 };
 
@@ -175,6 +308,8 @@ module.exports = {
   login,
   logout,
   getMe,
+  requestOTP,
+  verifyOTP,
   updatePassword,
   verifyEmail
 };

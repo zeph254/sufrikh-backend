@@ -46,6 +46,43 @@ const emailTemplates = {
       </div>
     </div>
   `),
+  // Add this to your emailTemplates object in emailService.js
+accountCreated: ({ name, loginUrl, tempPassword = null }) => (`
+  <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
+    <div style="background: #2563eb; padding: 20px; color: white;">
+      <h1 style="margin: 0;">Your Sufrikh Account Has Been Created</h1>
+    </div>
+    <div style="padding: 20px;">
+      <p>Hello ${name},</p>
+      <p>An administrator has created an account for you on Sufrikh.</p>
+      
+      ${tempPassword ? `
+        <p>Here are your temporary login credentials:</p>
+        <div style="background: #f8fafc; padding: 15px; border-radius: 6px; margin: 15px 0;">
+          <p style="margin: 5px 0;"><strong>Email:</strong> ${email}</p>
+          <p style="margin: 5px 0;"><strong>Temporary Password:</strong> ${tempPassword}</p>
+        </div>
+        <p style="color: #dc2626; font-weight: bold;">Please change your password after logging in.</p>
+      ` : `
+        <p>You can now log in using the password you set during registration.</p>
+      `}
+      
+      <a href="${loginUrl}" 
+         style="background: #2563eb; color: white; padding: 12px 24px;
+                text-decoration: none; border-radius: 6px; display: inline-block;
+                margin: 20px 0;">
+        Login to Your Account
+      </a>
+      
+      <p style="color: #6b7280; font-size: 0.9em;">
+        If you didn't request this account, please contact our support team immediately.
+      </p>
+    </div>
+    <div style="background: #f8fafc; padding: 15px 20px; text-align: center; font-size: 12px; color: #718096; border-top: 1px solid #e2e8f0;">
+      © ${new Date().getFullYear()} Sufrikh. All rights reserved.
+    </div>
+  </div>
+`),
   
   verification: ({ verificationUrl }) => (`
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -66,6 +103,30 @@ const emailTemplates = {
       </p>
     </div>
   `),
+
+  // Add to emailTemplates object
+otp: ({ otp, expirationMinutes }) => (`
+  <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
+    <div style="background: #2563eb; padding: 20px; color: white;">
+      <h1 style="margin: 0;">Your Verification Code</h1>
+    </div>
+    <div style="padding: 20px;">
+      <p>Your one-time verification code is:</p>
+      
+      <div style="background: #f8fafc; padding: 15px; border-radius: 6px; margin: 15px 0; text-align: center; font-size: 24px; font-weight: bold;">
+        ${otp}
+      </div>
+      
+      <p style="color: #6b7280; font-size: 0.9em;">
+        This code will expire in ${expirationMinutes} minutes. 
+        If you didn't request this, please ignore this email or contact support.
+      </p>
+    </div>
+    <div style="background: #f8fafc; padding: 15px 20px; text-align: center; font-size: 12px; color: #718096; border-top: 1px solid #e2e8f0;">
+      © ${new Date().getFullYear()} Sufrikh. All rights reserved.
+    </div>
+  </div>
+`),
   
   passwordReset: ({ name, resetUrl }) => (`
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
@@ -94,6 +155,32 @@ const emailTemplates = {
     </div>
   `)
 };
+
+// Add this method
+// Update sendOTPEmail function
+const sendOTPEmail = async ({ email, otp, expirationMinutes }) => {
+  try {
+    const mailOptions = {
+      from: process.env.EMAIL_FROM,
+      to: email,
+      subject: 'Your Sufrikh Verification Code',
+      html: emailTemplates.otp({ otp, expirationMinutes })
+    };
+
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Dev Mode: Would send OTP email with options:', mailOptions);
+      return { previewUrl: 'https://mailtrap.io/inboxes' };
+    }
+
+    const info = await transporter.sendMail(mailOptions);
+    console.log('OTP email sent:', info.messageId);
+    return info;
+  } catch (err) {
+    console.error('OTP email failed:', err);
+    throw err;
+  }
+};
+
 
 // Email service methods
 const sendInviteEmail = async ({ email, type, inviterName, loginUrl }) => {
@@ -134,6 +221,38 @@ const sendInviteEmail = async ({ email, type, inviterName, loginUrl }) => {
       time: new Date().toISOString()
     });
     throw new Error(`Failed to send invitation email: ${err.message}`);
+  }
+};
+
+const sendAccountCreatedEmail = async ({ email, name, loginUrl, tempPassword = null }) => {
+  try {
+    const mailOptions = {
+      from: process.env.EMAIL_FROM || `"Sufrikh Team" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: 'Your Sufrikh Account Has Been Created',
+      html: emailTemplates.accountCreated({
+        name,
+        loginUrl,
+        tempPassword,
+        email
+      })
+    };
+
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Dev Mode: Would send account created email with options:', mailOptions);
+      return { previewUrl: 'https://mailtrap.io/inboxes' };
+    }
+
+    const info = await transporter.sendMail(mailOptions);
+    console.log('Account created email sent:', info.messageId);
+    return info;
+  } catch (err) {
+    console.error('Account created email failed:', {
+      error: err.message,
+      recipient: email,
+      time: new Date().toISOString()
+    });
+    throw new Error(`Failed to send account created email: ${err.message}`);
   }
 };
 
@@ -205,9 +324,13 @@ const sendPasswordResetEmail = async ({ email, resetUrl, name }) => {
   }
 };
 
+
+
 module.exports = {
   sendInviteEmail,
   sendVerificationEmail,
   verifyConnection,
-  sendPasswordResetEmail
+  sendOTPEmail,
+  sendPasswordResetEmail,
+  sendAccountCreatedEmail // Added this line
 };

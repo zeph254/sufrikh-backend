@@ -62,8 +62,14 @@ model User {
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
-  resetPasswordToken      String?   @unique
-  resetPasswordExpire     DateTime?
+  resetPasswordToken  String?   @unique
+  resetPasswordExpire DateTime?
+
+  carrier String? @db.VarChar(20)
+
+  // Add these relations
+  otps        OTP[]              @relation("UserOTPs")
+  otpAttempts FailedOtpAttempt[] @relation("UserOtpAttempts")
 
   // Indexes
   @@index([email])
@@ -99,4 +105,31 @@ model AdminAuditLog {
   metadata    Json?
   permissions Json?
   created_at  DateTime @default(now())
+}
+
+model OTP {
+  id         Int      @id @default(autoincrement())
+  user_id    Int
+  user       User     @relation("UserOTPs", fields: [user_id], references: [id])
+  code       String
+  type       String // 'email' or 'sms'
+  expires_at DateTime
+  is_used    Boolean  @default(false)
+  created_at DateTime @default(now())
+
+  @@index([user_id])
+  @@index([code])
+  @@index([expires_at])
+}
+
+model FailedOtpAttempt {
+  id             Int      @id @default(autoincrement())
+  user_id        Int
+  user           User     @relation("UserOtpAttempts", fields: [user_id], references: [id])
+  attempted_code String
+  attempt_type   String
+  created_at     DateTime @default(now())
+
+  @@index([user_id])
+  @@index([created_at])
 }
