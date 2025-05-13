@@ -18,40 +18,37 @@ const generateOTP = () => {
 };
 
 const storeOTP = async (userId, otp, type = 'email') => {
+  const prisma = require('../prisma/client');
+  
   try {
-    // Ensure Prisma is connected
+    // Ensure connection
     await prisma.$connect();
 
-    // Invalidate existing OTPs first
-    await prisma.oTP.updateMany({
-      where: {
-        user_id: userId,
-        type,
-        is_used: false
-      },
-      data: { is_used: true }
-    });
+    // Invalidate existing OTPs first - use transaction for atomicity
+    const result = await prisma.$transaction([
+      prisma.oTP.updateMany({
+        where: {
+          user_id: userId,
+          type,
+          is_used: false,
+          expires_at: { gt: new Date() } // Only invalidate unexpired OTPs
+        },
+        data: { is_used: true }
+      }),
+      prisma.oTP.create({
+        data: {
+          user_id: userId,
+          code: otp.toString(), // Ensure string storage
+          type,
+          expires_at: new Date(Date.now() + OTP_EXPIRY_MINUTES * 60000),
+          is_used: false
+        }
+      })
+    ]);
 
-    // Create new OTP
-    const createdOTP = await prisma.oTP.create({
-      data: {
-        user_id: userId,
-        code: otp,
-        type,
-        expires_at: new Date(Date.now() + OTP_EXPIRY_MINUTES * 60000),
-        is_used: false
-      }
-    });
-
-    return createdOTP;
+    return result[1]; // Return the created OTP
   } catch (error) {
-    console.error('OTP storage failed:', {
-      error: error.message,
-      stack: error.stack, // Include stack trace
-      userId,
-      type,
-      timestamp: new Date().toISOString()
-    });
+    console.error('OTP storage failed:', error);
     throw new Error('Failed to store OTP');
   } finally {
     await prisma.$disconnect();
@@ -109,55 +106,48 @@ const sendSmsOTP = async (phoneNumber, userId, carrier) => {
 
 // services/otpService.js
 const verifyOTP = async (userId, otp, type = 'email') => {
-  try {
-    await prisma.$connect();
-    
-    return await prisma.$transaction(async (tx) => {
-      // 1. Find and lock the OTP record
-      const validOTP = await tx.oTP.findFirst({
-        where: {
-          user_id: userId,
-          code: otp,
-          type,
-          is_used: false,
-          expires_at: { gt: new Date() }
-        },
-        select: { id: true, user_id: true }
-      });
-
-      if (!validOTP) {
-        await tx.failedOtpAttempt.create({
-          data: {
-            user_id: userId,
-            attempted_code: otp,
-            attempt_type: type
-          }
-        });
-        throw new Error('Invalid or expired OTP');
+  return await prisma.$transaction(async (tx) => {
+    // 1. Find valid OTP
+    const validOTP = await tx.oTP.findFirst({
+      where: {
+        user_id: userId,
+        code: otp.toString(),
+        type,
+        is_used: false,
+        expires_at: { gt: new Date() }
       }
-
-      // 2. Mark OTP as used
-      await tx.oTP.update({
-        where: { id: validOTP.id },
-        data: { is_used: true }
-      });
-
-      // 3. Update user verification status if email OTP
-      if (type === 'email') {
-        await tx.user.update({
-          where: { id: userId },
-          data: { is_verified: true }
-        });
-      }
-
-      return true;
     });
-  } catch (error) {
-    console.error('OTP verification failed:', error);
-    throw error;
-  } finally {
-    await prisma.$disconnect();
-  }
+
+    if (!validOTP) {
+      await tx.failedOtpAttempt.create({
+        data: {
+          user_id: userId,
+          attempted_code: otp.toString(),
+          attempt_type: type
+        }
+      });
+      throw new Error('Invalid or expired OTP');
+    }
+
+    // 2. Mark OTP as used
+    await tx.oTP.update({
+      where: { id: validOTP.id },
+      data: { 
+        is_used: true,
+        used_at: new Date()
+      }
+    });
+
+    // 3. Update user verification status
+    if (type === 'email') {
+      await tx.user.update({
+        where: { id: userId },
+        data: { is_verified: true }
+      });
+    }
+
+    return true;
+  });
 };
 
 module.exports = {

@@ -1,6 +1,7 @@
 const bcrypt = require('bcryptjs');
 const { generateToken } = require('../utils/jwt');
 const prisma = require('../prisma/client');
+const otpService = require('../services/otpService');
 
 // Register - with enhanced debugging
 const register = async (req, res) => {
@@ -43,14 +44,16 @@ const register = async (req, res) => {
         zabihah_only: zabihah_only ?? true,
         no_alcohol: no_alcohol ?? true,
         prayer_in_room: prayer_in_room ?? false,
-        is_verified: false // Default to false for OTP verification
+        is_verified: false
       }
     });
 
     // Generate token with shorter expiration for OTP flow
     const token = generateToken(user.id, '1h');
+
+    // Send OTP immediately after registration
+    await otpService.sendEmailOTP(user.email, user.id);
     
-    // Return user data but don't automatically log them in
     res.status(201).json({ 
       success: true,
       token,
@@ -60,11 +63,11 @@ const register = async (req, res) => {
         first_name: user.first_name,
         last_name: user.last_name,
         role: user.role,
-        is_verified: false, // Explicitly set to false
+        is_verified: false,
         phone: user.phone || '',
         gender: user.gender || 'male'
       },
-      requiresVerification: true // Flag to indicate OTP is needed
+      requiresVerification: true
     });
 
   } catch (err) {
@@ -84,7 +87,6 @@ const register = async (req, res) => {
     });
   }
 };
-
 
 
 // Login
@@ -176,10 +178,11 @@ const getMe = async (req, res) => {
 
 const verifyOTP = async (req, res) => {
   try {
-    const { userId, otp } = req.body;
+    const { otp } = req.body;
+    const userId = req.user.id; // Get from authenticated user
 
-    if (!userId || !otp) {
-      return res.status(400).json({ error: 'User ID and OTP are required' });
+    if (!otp) {
+      return res.status(400).json({ error: 'OTP is required' });
     }
 
     // Verify OTP using your OTP service
@@ -221,6 +224,7 @@ const verifyOTP = async (req, res) => {
     });
   }
 };
+
 
 const requestOTP = async (req, res) => {
   try {

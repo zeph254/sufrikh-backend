@@ -110,22 +110,25 @@ model AdminAuditLog {
 model OTP {
   id         Int      @id @default(autoincrement())
   user_id    Int
-  user       User     @relation("UserOTPs", fields: [user_id], references: [id])
+  user       User     @relation("UserOTPs", fields: [user_id], references: [id], onDelete: Cascade)
   code       String
-  type       String // 'email' or 'sms'
+  type       String   // 'email' or 'sms'
   expires_at DateTime
   is_used    Boolean  @default(false)
+  used_at    DateTime?
   created_at DateTime @default(now())
 
-  @@index([user_id])
-  @@index([code])
-  @@index([expires_at])
+  @@index([user_id], name: "otp_user_id_idx")
+  @@index([code], name: "otp_code_idx")
+  @@index([expires_at], name: "otp_expires_at_idx")
+  @@index([user_id, code, type], name: "otp_user_code_type_idx")
+  @@index([is_used], name: "otp_is_used_idx")
 }
 
 model FailedOtpAttempt {
   id             Int      @id @default(autoincrement())
   user_id        Int
-  user           User     @relation("UserOtpAttempts", fields: [user_id], references: [id])
+  user           User     @relation("UserOtpAttempts", fields: [user_id], references: [id], onDelete: Cascade)
   attempted_code String
   attempt_type   String
   created_at     DateTime @default(now())

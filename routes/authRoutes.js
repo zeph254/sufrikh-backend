@@ -13,6 +13,30 @@ console.log('Auth Controller Methods:', {
   verifyEmail: typeof authController.verifyEmail
 });
 
+// routes/authRoutes.js
+// Add this route
+router.post('/send-otp', protect, async (req, res) => {
+  try {
+    const { type = 'email' } = req.body;
+    const userId = req.user.id;
+
+    const otp = type === 'sms' 
+      ? await otpService.sendSmsOTP(req.user.phone, userId, req.user.carrier)
+      : await otpService.sendEmailOTP(req.user.email, userId);
+
+    res.json({ 
+      success: true,
+      message: `OTP sent via ${type}`,
+      otp: process.env.NODE_ENV === 'development' ? otp : undefined
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Failed to send OTP',
+      details: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
+  }
+});
+
 // Public routes
 router.post('/register', (req, res) => {
   console.log('Register route hit'); // Debugging

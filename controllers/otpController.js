@@ -74,10 +74,18 @@ exports.requestOTP = async (req, res) => {
 exports.verifyOTP = async (req, res) => {
   try {
     const { otp, type = 'email' } = req.body;
-    const userId = req.user.id;
+    const userId = req.user.id; // From JWT middleware
 
+    // Validate OTP format
+    if (!otp || !/^\d{6}$/.test(otp)) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Valid 6-digit OTP is required' 
+      });
+    }
+
+    // Verify OTP
     const isValid = await otpService.verifyOTP(userId, otp, type);
-
     if (!isValid) {
       return res.status(400).json({ 
         success: false, 
@@ -85,23 +93,55 @@ exports.verifyOTP = async (req, res) => {
       });
     }
 
+    // Generate new long-lived token
+    const token = generateToken(userId);
+    
     res.json({ 
       success: true,
-      message: 'OTP verified successfully',
-      verified: true
-    });
-  } catch (error) {
-    console.error('OTP verification failed:', {
-      error: error.message,
-      stack: error.stack,
-      userId: req.user?.id,
-      timestamp: new Date().toISOString()
+      token, // Send new token
+      message: 'Account verified successfully'
     });
 
-    const statusCode = error.message.includes('Invalid') ? 400 : 500;
-    res.status(statusCode).json({ 
-      success: false, 
-      error: error.message || 'Failed to verify OTP'
+  } catch (error) {
+    console.error('OTP verification error:', {
+      userId: req.user?.id,
+      error: error.message,
+      stack: error.stack,
+      timestamp: new Date().toISOString()
     });
+    res.status(500).json({ 
+      success: false,
+      error: error.message || 'OTP verification failed'
+    });
+  }
+};
+
+// controllers/otpController.js
+exports.requestOTPUnAuth = async (req, res) => {
+  try {
+    const { email, phone, type = 'email' } = req.body;
+
+    // Find user by email or phone
+    const user = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { email: email || undefined },
+          { phone: phone || undefined }
+        ],
+        is_verified: false // Only unverified users
+      }
+    });
+
+    if (!user) {
+      return res.status(404).json({ success: false, error: 'User not found or already verified' });
+    }
+
+    // Send OTP logic here (call your service)
+    await otpService.sendOTP(user.id, user.email, user.phone, type);
+
+    res.json({ success: true, message: 'OTP sent' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, error: 'Server error' });
   }
 };
