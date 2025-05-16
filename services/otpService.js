@@ -9,12 +9,13 @@ const OTP_LENGTH = 6;
 const OTP_EXPIRY_MINUTES = 10;
 const SMS_MESSAGE_TEMPLATE = 'Your verification code is: {otp}. Valid for {minutes} minutes.';
 
+// services/otpService.js
 const generateOTP = () => {
   const digits = [];
   for (let i = 0; i < OTP_LENGTH; i++) {
     digits.push(Math.floor(Math.random() * 10));
   }
-  return digits.join('');
+  return digits.join(''); // Ensure this returns a string
 };
 
 const storeOTP = async (userId, otp, type = 'email') => {
@@ -105,13 +106,18 @@ const sendSmsOTP = async (phoneNumber, userId, carrier) => {
 };
 
 // services/otpService.js
+// services/otpService.js
+// services/otpService.js
 const verifyOTP = async (userId, otp, type = 'email') => {
+  // Ensure otp is a string
+  const otpString = String(otp).trim();
+  
   return await prisma.$transaction(async (tx) => {
-    // 1. Find valid OTP
+    // Find valid OTP - ensure we compare strings
     const validOTP = await tx.oTP.findFirst({
       where: {
         user_id: userId,
-        code: otp.toString(),
+        code: otpString, // Compare as string
         type,
         is_used: false,
         expires_at: { gt: new Date() }
@@ -122,14 +128,14 @@ const verifyOTP = async (userId, otp, type = 'email') => {
       await tx.failedOtpAttempt.create({
         data: {
           user_id: userId,
-          attempted_code: otp.toString(),
+          attempted_code: otpString,
           attempt_type: type
         }
       });
       throw new Error('Invalid or expired OTP');
     }
 
-    // 2. Mark OTP as used
+    // Mark OTP as used
     await tx.oTP.update({
       where: { id: validOTP.id },
       data: { 
@@ -137,14 +143,6 @@ const verifyOTP = async (userId, otp, type = 'email') => {
         used_at: new Date()
       }
     });
-
-    // 3. Update user verification status
-    if (type === 'email') {
-      await tx.user.update({
-        where: { id: userId },
-        data: { is_verified: true }
-      });
-    }
 
     return true;
   });

@@ -7,6 +7,25 @@ exports.requestOTP = async (req, res) => {
     const { type = 'email' } = req.body;
     const userId = req.user.id;
 
+    // Add rate limiting check at the controller level
+// Update the time window to be more user-friendly
+    const recentOTP = await prisma.oTP.findFirst({
+      where: {
+        user_id: userId,
+        type,
+        created_at: { gt: new Date(Date.now() - 60000) }, // 60 seconds ago
+        is_used: false
+      }
+    });
+
+    if (recentOTP) {
+      const secondsLeft = Math.ceil((new Date(recentOTP.created_at).getTime() + 60000 - Date.now()) / 1000);
+      return res.status(429).json({
+        success: false,
+        error: `Please wait ${secondsLeft} seconds before requesting another OTP`
+      });
+    }
+
     // Verify user exists first
     const user = await prisma.user.findUnique({
       where: { id: userId },
@@ -71,21 +90,26 @@ exports.requestOTP = async (req, res) => {
 };
 
 // controllers/otpController.js
+// controllers/otpController.js
+// controllers/otpController.js
 exports.verifyOTP = async (req, res) => {
   try {
     const { otp, type = 'email' } = req.body;
-    const userId = req.user.id; // From JWT middleware
+    const userId = req.user.id;
 
-    // Validate OTP format
-    if (!otp || !/^\d{6}$/.test(otp)) {
+    // Ensure otp is a string
+    const otpString = String(otp).trim();
+    
+    if (!otpString || otpString.length !== 6) {
       return res.status(400).json({ 
         success: false, 
         error: 'Valid 6-digit OTP is required' 
       });
     }
 
-    // Verify OTP
-    const isValid = await otpService.verifyOTP(userId, otp, type);
+    // Verify OTP using your OTP service
+    const isValid = await otpService.verifyOTP(userId, otpString, type);
+    
     if (!isValid) {
       return res.status(400).json({ 
         success: false, 
@@ -93,22 +117,25 @@ exports.verifyOTP = async (req, res) => {
       });
     }
 
-    // Generate new long-lived token
+    // Update user verification status if needed
+    if (type === 'email') {
+      await prisma.user.update({
+        where: { id: userId },
+        data: { is_verified: true }
+      });
+    }
+
+    // Generate new token
     const token = generateToken(userId);
-    
+
     res.json({ 
       success: true,
-      token, // Send new token
+      token,
       message: 'Account verified successfully'
     });
 
   } catch (error) {
-    console.error('OTP verification error:', {
-      userId: req.user?.id,
-      error: error.message,
-      stack: error.stack,
-      timestamp: new Date().toISOString()
-    });
+    console.error('OTP verification error:', error);
     res.status(500).json({ 
       success: false,
       error: error.message || 'OTP verification failed'
