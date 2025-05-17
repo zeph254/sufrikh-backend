@@ -9,20 +9,27 @@ exports.requestOTP = async (req, res) => {
 
     // Add rate limiting check at the controller level
 // Update the time window to be more user-friendly
+// Update the rate limiting check
     const recentOTP = await prisma.oTP.findFirst({
       where: {
         user_id: userId,
         type,
-        created_at: { gt: new Date(Date.now() - 60000) }, // 60 seconds ago
+        created_at: { 
+          gt: new Date(Date.now() - 60000) // 60 seconds ago
+        },
         is_used: false
+      },
+      orderBy: {
+        created_at: 'desc'
       }
     });
 
     if (recentOTP) {
-      const secondsLeft = Math.ceil((new Date(recentOTP.created_at).getTime() + 60000 - Date.now()) / 1000);
+      const timeLeft = Math.ceil((new Date(recentOTP.created_at).getTime() + 60000 - Date.now()) / 1000);
       return res.status(429).json({
         success: false,
-        error: `Please wait ${secondsLeft} seconds before requesting another OTP`
+        error: `Please wait ${timeLeft} seconds before requesting another OTP`,
+        retryAfter: timeLeft
       });
     }
 

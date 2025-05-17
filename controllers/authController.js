@@ -178,53 +178,68 @@ const getMe = async (req, res) => {
 
 const verifyOTP = async (req, res) => {
   try {
-    const { otp } = req.body;
-    const userId = req.user.id; // Get from authenticated user
+    const { otp, type = 'email' } = req.body;
+    const userId = req.user.id;
 
-    if (!otp) {
-      return res.status(400).json({ error: 'OTP is required' });
+    // Ensure otp is properly formatted
+    const cleanOtp = String(otp).replace(/\D/g, ''); // Remove non-digit characters
+    
+    if (cleanOtp.length !== 6) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Valid 6-digit OTP is required' 
+      });
     }
 
-    // Verify OTP using your OTP service
-    const isValid = await otpService.verifyOTP(userId, otp, 'email');
+    // Verify OTP
+    const isValid = await otpService.verifyOTP(userId, cleanOtp, type);
     
     if (!isValid) {
-      return res.status(400).json({ error: 'Invalid or expired OTP' });
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Invalid or expired OTP' 
+      });
     }
 
-    // Mark user as verified
-    const user = await prisma.user.update({
-      where: { id: userId },
-      data: { is_verified: true },
-      select: {
-        id: true,
-        email: true,
-        first_name: true,
-        last_name: true,
-        role: true,
-        is_verified: true
-      }
-    });
+    // Mark user as verified if email OTP
+    if (type === 'email') {
+      const user = await prisma.user.update({
+        where: { id: userId },
+        data: { is_verified: true },
+        select: {
+          id: true,
+          email: true,
+          first_name: true,
+          last_name: true,
+          role: true,
+          is_verified: true
+        }
+      });
 
-    // Generate new token with normal expiration
-    const token = generateToken(user.id);
+      // Generate new token with normal expiration
+      const token = generateToken(user.id);
 
-    res.json({
+      return res.json({
+        success: true,
+        token,
+        user,
+        message: 'Account verified successfully'
+      });
+    }
+
+    res.json({ 
       success: true,
-      token,
-      user,
-      message: 'Account verified successfully'
+      message: 'OTP verified successfully'
     });
 
   } catch (err) {
     console.error('OTP verification error:', err);
     res.status(500).json({ 
-      error: 'OTP verification failed',
-      details: process.env.NODE_ENV === 'development' ? err.message : undefined
+      success: false,
+      error: err.message || 'OTP verification failed'
     });
   }
 };
-
 
 const requestOTP = async (req, res) => {
   try {

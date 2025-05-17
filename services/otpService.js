@@ -11,11 +11,12 @@ const SMS_MESSAGE_TEMPLATE = 'Your verification code is: {otp}. Valid for {minut
 
 // services/otpService.js
 const generateOTP = () => {
-  const digits = [];
+  const digits = '0123456789';
+  let otp = '';
   for (let i = 0; i < OTP_LENGTH; i++) {
-    digits.push(Math.floor(Math.random() * 10));
+    otp += digits[Math.floor(Math.random() * 10)];
   }
-  return digits.join(''); // Ensure this returns a string
+  return otp; // Explicitly return a string
 };
 
 const storeOTP = async (userId, otp, type = 'email') => {
@@ -57,26 +58,40 @@ const storeOTP = async (userId, otp, type = 'email') => {
 };
 
 const sendEmailOTP = async (email, userId) => {
-  try {
+  return await prisma.$transaction(async (tx) => {
+    // Invalidate any existing OTPs first
+    await tx.oTP.updateMany({
+      where: {
+        user_id: userId,
+        type: 'email',
+        is_used: false
+      },
+      data: { is_used: true }
+    });
+
+    // Generate and store new OTP
     const otp = generateOTP();
-    await storeOTP(userId, otp, 'email');
+    const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60000);
     
+    await tx.oTP.create({
+      data: {
+        user_id: userId,
+        code: otp,
+        type: 'email',
+        expires_at: expiresAt,
+        is_used: false
+      }
+    });
+
+    // Send email
     await emailService.sendOTPEmail({
       email,
       otp,
       expirationMinutes: OTP_EXPIRY_MINUTES
     });
-    
+
     return otp;
-  } catch (error) {
-    console.error('Email OTP failed:', {
-      error: error.message,
-      email,
-      userId,
-      timestamp: new Date().toISOString()
-    });
-    throw new Error('Failed to send OTP email');
-  }
+  });
 };
 
 const sendSmsOTP = async (phoneNumber, userId, carrier) => {
@@ -105,15 +120,16 @@ const sendSmsOTP = async (phoneNumber, userId, carrier) => {
   }
 };
 
-// services/otpService.js
-// services/otpService.js
-// services/otpService.js
 const verifyOTP = async (userId, otp, type = 'email') => {
-  // Ensure otp is a string
+  // Ensure otp is a string and clean it
   const otpString = String(otp).trim();
   
+  if (!otpString || otpString.length !== 6) {
+    throw new Error('Valid 6-digit OTP is required');
+  }
+
   return await prisma.$transaction(async (tx) => {
-    // Find valid OTP - ensure we compare strings
+    // Find valid OTP
     const validOTP = await tx.oTP.findFirst({
       where: {
         user_id: userId,
